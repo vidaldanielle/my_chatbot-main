@@ -1,0 +1,28 @@
+# Virtual environment
+.venv/
+
+# Qdrant database
+qdrant_storage/
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environment
+.env
+
+# Cache
+chunks_cache.pkl
+indexed_recorder.json
+
+# Temporary
+temp_repo/
