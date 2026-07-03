@@ -1,14 +1,7 @@
-<<<<<<< HEAD
-# rag/embedding.py
-
-import os                                              
-import pickle                                 # Standard library: serialize Python objects to disk
-=======
 import os                                              
 import json
 import pickle                                 # Standard library: serialize Python objects to disk
 import streamlit as st
->>>>>>> f1888fd0 (Initial commit)
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter  
 from langchain_core.documents import Document                      # LangChain's Document wrapper
@@ -21,28 +14,18 @@ from qdrant_client.models import Distance, VectorParams            # Config obje
 # ── Configuration constants ──────────────────────────────────────────────────
 
 COLLECTION_NAME   = "rag_documents"       # Name of Qdrant collection that stores our vectors
-<<<<<<< HEAD
-QDRANT_PATH       = "./qdrant_storage"    # Local folder where Qdrant will save data
-CHUNKS_CACHE_PATH = "./chunks_cache.pkl"  # Pickle file that caches split chunks for BM25 retriever re-use
-EMBEDDING_MODEL   = "BAAI/bge-m3"         
-CHUNK_SIZE        = 768                   
-=======
 QDRANT_PATH       = "./qdrant_storage"  
 CHUNKS_CACHE_PATH = "./chunks_cache.pkl"  # Pickle file that caches split chunks for BM25 retriever re-use
 RECORDER_PATH     = "./indexed_recorder.json" # JSON file tracking which files have been indexed + their mtimes
 EMBEDDING_MODEL   = "BAAI/bge-m3"         
 CHUNK_SIZE        = 1024                   
->>>>>>> f1888fd0 (Initial commit)
 CHUNK_OVERLAP     = 100                   
 VECTOR_DIM        = 1024                  
 
 
 # ── Embedding model loader ───────────────────────────────────────────────────
 
-<<<<<<< HEAD
-=======
 @st.cache_resource(show_spinner=False)
->>>>>>> f1888fd0 (Initial commit)
 def get_embedding_model() -> HuggingFaceEmbeddings:
 
     print(f"[Embedding] Loading embedding model '{EMBEDDING_MODEL}' ...")  
@@ -53,11 +36,7 @@ def get_embedding_model() -> HuggingFaceEmbeddings:
         encode_kwargs={"normalize_embeddings": True}   # normalise vectors
     )
 
-<<<<<<< HEAD
-    print(f"[Embedding] ✅ Embedding model loaded.")   # Confirm successful load
-=======
     print(f"[Embedding] ✅ Embedding model loaded.")
->>>>>>> f1888fd0 (Initial commit)
 
     return embeddings                                  
 
@@ -81,11 +60,6 @@ def split_documents(docs: list[Document]) -> list[Document]:
     return chunks                                    
 
 
-<<<<<<< HEAD
-# ── Build / index vector store ───────────────────────────────────────────────
-
-def build_vectorstore(chunks: list[Document]) -> QdrantVectorStore:
-=======
 # ── Indexed Recorder helper functions ─────────────────────────────────────────
 
 def load_recorder() -> dict:
@@ -111,7 +85,6 @@ def save_recorder(recorder: dict) -> None:
 # ── Build / index vector store (FULL — first run) ───────────────────────────
 
 def build_vectorstore(chunks: list[Document], recorder: dict | None = None) -> QdrantVectorStore:
->>>>>>> f1888fd0 (Initial commit)
  
     embeddings = get_embedding_model()               
 
@@ -119,22 +92,14 @@ def build_vectorstore(chunks: list[Document], recorder: dict | None = None) -> Q
 
     client = QdrantClient(path=QDRANT_PATH)          # Open a Qdrant client
 
-<<<<<<< HEAD
-    # ── Recreate collection ──
-=======
     # ── Drop old collection if one exists ──
->>>>>>> f1888fd0 (Initial commit)
     existing_names = [                               # Get the names of all collections that already exist
         c.name                                       # .name is the string identifier of each collection
         for c in client.get_collections().collections  # .collections is a list of CollectionDescription objects
     ]
 
     if COLLECTION_NAME in existing_names:            # If collection already exists from a previous run
-<<<<<<< HEAD
-        client.delete_collection(COLLECTION_NAME)    # delete it so it avoids duplicate vectors
-=======
         client.delete_collection(COLLECTION_NAME)    # delete it to avoid duplicate vectors
->>>>>>> f1888fd0 (Initial commit)
         print(f"[Embedding] Deleted old collection '{COLLECTION_NAME}'")  # Log deletion
 
     client.create_collection(                        
@@ -153,11 +118,7 @@ def build_vectorstore(chunks: list[Document], recorder: dict | None = None) -> Q
         embedding=embeddings                         # The embedding model used to encode documents and queries
     )
 
-<<<<<<< HEAD
-    print(f"[Embedding] Embedding {len(chunks)} chunks and inserting into Qdrant ...")  # Warn user this may take time
-=======
     print(f"[Embedding] Embedding {len(chunks)} chunk(s) — this may take a few minutes ...")  # Warn user this may take time
->>>>>>> f1888fd0 (Initial commit)
     vectorstore.add_documents(chunks)                # Encode every chunk and upsert the vectors into Qdrant
     print(f"[Embedding] ✅ Stored {len(chunks)} chunks in Qdrant at '{QDRANT_PATH}'")   # Confirm storage
 
@@ -166,13 +127,6 @@ def build_vectorstore(chunks: list[Document], recorder: dict | None = None) -> Q
         pickle.dump(chunks, f)                       # Serialise the chunks list to disk
     print(f"[Embedding] ✅ Chunk cache saved to '{CHUNKS_CACHE_PATH}'")  # Confirm cache write
 
-<<<<<<< HEAD
-    return vectorstore                              
-
-
-# ── Load existing vector store ───────────────────────────────────────────────
-
-=======
     # ── Save recorder so the next startup knows what is indexed ──
     if recorder is not None:
         save_recorder(recorder)
@@ -224,7 +178,6 @@ def add_documents_incremental(
 # ── Load existing vector store ───────────────────────────────────────────────
 
 @st.cache_resource(show_spinner=False)
->>>>>>> f1888fd0 (Initial commit)
 def load_vectorstore() -> QdrantVectorStore:
 
     if not os.path.exists(QDRANT_PATH):              # Check that the storage folder is present
@@ -263,8 +216,4 @@ def load_chunks_cache() -> list[Document]:
 
     print(f"[Embedding] ✅ Loaded {len(chunks)} chunks from cache '{CHUNKS_CACHE_PATH}'")  # Confirm load
 
-<<<<<<< HEAD
-    return chunks                                    
-=======
     return chunks
->>>>>>> f1888fd0 (Initial commit)

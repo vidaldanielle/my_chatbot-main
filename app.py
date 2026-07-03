@@ -1,19 +1,3 @@
-<<<<<<< HEAD
-# app.py
-
-import os                                              
-import streamlit as st                             
-
-# ── Import our custom RAG modules ────────────────────────────────────────────
-from rag.loader    import load_documents               # Step 1 – load raw files via LlamaIndex
-from rag.embedding import (                            # Step 2 – split + embed + store
-    split_documents,                                   # Split raw docs into chunks
-    build_vectorstore,                                 # Embed chunks and store in Qdrant
-    load_vectorstore,                                  # Load an existing Qdrant collection from disk
-    load_chunks_cache                                  # Load saved text chunks for BM25
-)
-from rag.retrieval import (                            # Step 3 – retrieve relevant chunks
-=======
 import os
 import streamlit as st
 from datetime import datetime                          # for capturing timestamps
@@ -36,28 +20,21 @@ from rag.embedding import (                            # Step 3 – split + embe
     CHUNKS_CACHE_PATH,                                 # Path constant used to check if cache exists
 )
 from rag.retrieval import (                            # Step 4 – retrieve relevant chunks
->>>>>>> f1888fd0 (Initial commit)
     get_bm25_retriever,                                # Build BM25 retriever from chunks
     get_dense_retriever,                               # Build dense vector retriever from Qdrant
     retrieve                                           # Run the full hybrid + rerank pipeline
 )
-<<<<<<< HEAD
-from rag.chain import run_rag_chain_stream             # Step 4 – stream the LLM answer
-=======
 from rag.chain import (
     run_rag_chain_stream,                              # Step 5 – stream the LLM answer
     rewrite_query_with_history                         # Resolve pronouns/follow-ups before retrieval
 )
 from rag.logger import logger                          # Shared logger instance
->>>>>>> f1888fd0 (Initial commit)
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
 DEFAULT_DOCS_FOLDER = "./documents"                    # Default folder users place their documents in
 
-<<<<<<< HEAD
-=======
 # match the start of the assistant response to detect a "not found" turn.
 NOT_FOUND_TRIGGER = "I wasn't able to find any results for"
 SUPPORTED_EXTENSIONS = {
@@ -311,104 +288,12 @@ def run_startup_indexing(docs_folder: str, status_placeholder) -> tuple:
 
         return vectorstore, chunks, status_msg
 
->>>>>>> f1888fd0 (Initial commit)
 
 # ── Page configuration (must be the very first Streamlit call) ───────────────
 
 st.set_page_config(                                    # Configure the Streamlit page metadata
     page_title="RAG Chatbot",                          # Browser tab title
     page_icon="🤖",                                    # Browser tab favicon emoji
-<<<<<<< HEAD
-    layout="wide"                                      # Use full browser width instead of narrow centre column
-)
-
-
-# ── Page header ──────────────────────────────────────────────────────────────
-
-st.title("🤖 RAG Chatbot")                             # Large heading at the top of the page
-
-st.divider()                                           # Horizontal line separating header from content
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR – Indexing controls and settings
-# ══════════════════════════════════════════════════════════════════════════════
-
-with st.sidebar:                                       # Everything indented here appears in the left sidebar
-
-    st.header("📁 Index Documents")                    # Sidebar section title
-
-    # Text input for the folder path
-    folder_path = st.text_input(                       # Single-line text box
-        label="Documents folder",                      # Label shown above the text box
-        value=DEFAULT_DOCS_FOLDER,                     # Pre-filled default value
-        help="Path to a folder containing .txt, .pdf, .docx, .md files etc."  # Tooltip on hover
-    )
-
-    # ── Index button ──
-    if st.button("🔄 Index Documents", use_container_width=True):   # Wide button; runs when clicked
-        if not os.path.exists(folder_path):            # Validate that the folder exists before proceeding
-            st.error(f"❌ Folder not found: `{folder_path}`")        # Show red error box
-        else:
-            # Loading step
-            with st.spinner("📖 Loading documents..."):              # Spinner while loading
-                docs = load_documents(folder_path)                   # Call loader.py to read all files
-            st.info(f"📄 Loaded **{len(docs)}** document(s)")        # Show blue info box with doc count
-
-            # Splitting & embedding step
-            with st.spinner("✂️ Splitting and embedding chunks..."):  # Spinner while indexing
-                chunks      = split_documents(docs)                  # Split raw docs into smaller chunks
-                vectorstore = build_vectorstore(chunks)              # Embed and store chunks in Qdrant
-
-            st.success(f"✅ Indexed **{len(chunks)}** chunks into Qdrant!")  # Green success message
-
-            # Save everything to Streamlit session state so it persists across reruns
-            st.session_state["indexed"]     = True         # Flag: documents have been indexed
-            st.session_state["chunks"]      = chunks       # Cached chunks for BM25 retriever
-            st.session_state["vectorstore"] = vectorstore  # Cached vectorstore for dense retriever
-
-    st.divider()                                           # Visual separator in sidebar
-
-    # ── Load existing index button ──
-    st.caption("Already indexed? Load without re-processing:")         # Helper text above button
-
-    if st.button("📂 Load Existing Index", use_container_width=True):  # Button to reload a previously built index
-        with st.spinner("⏳ Loading existing index from disk..."):     # Spinner while loading
-            try:
-                vectorstore = load_vectorstore()                       # Load Qdrant collection from qdrant_storage/
-                chunks      = load_chunks_cache()                      # Load BM25 chunk list from chunks_cache.pkl
-
-                st.session_state["indexed"]     = True                 # Mark as indexed
-                st.session_state["chunks"]      = chunks               # Store in session
-                st.session_state["vectorstore"] = vectorstore          # Store in session
-
-                st.success("✅ Existing index loaded successfully!")    # Confirm success
-
-            except FileNotFoundError as e:                             # Handle missing files gracefully
-                st.error(f"❌ {e}")                                    # Show specific error message
-
-    st.divider()                                           # Visual separator
-
-    # ── Retrieval settings ──
-    st.header("⚙️ Settings")                               # Settings section header
-
-    top_n = st.slider(                                     # Slider widget for choosing result count
-        label="Top-N chunks after reranking",              # Slider label
-        min_value=1,                                       # Minimum selectable value
-        max_value=8,                                       # Maximum selectable value
-        value=4,                                           # Default value
-        help="How many reranked chunks are passed to the LLM as context."  # Tooltip
-    )
-
-    st.divider()                                           # Visual separator
-
-    # ── Status indicator ──
-    if st.session_state.get("indexed", False):             # Check if documents have been indexed
-        chunk_count = len(st.session_state.get("chunks", []))  # Count cached chunks
-        st.success(f"✅ Index ready ({chunk_count} chunks)")    # Green status pill
-    else:
-        st.warning("⚠️ No index loaded. Index documents first.")  # Yellow warning
-=======
     layout="wide",                                     # Use full browser width instead of narrow centre column
     initial_sidebar_state="expanded",
 )
@@ -446,6 +331,7 @@ def render_chat_sidebar():
                 "messages": [],                                 # Empty message list
                 "timestamp": datetime.now()                     # Record creation time
             }
+            st.session_state["chat_search_query"] = ""          # Reset search box so the fresh chat is visible in the list
             logger.info(f"New chat started — id={new_id}")      # Log the new chat event
             st.rerun(scope="app")                               # Refresh UI to clear the chat area
 
@@ -459,35 +345,125 @@ def render_chat_sidebar():
                 st.session_state["chats"][cid]["messages"]     = []
                 st.session_state["chats"][cid]["chat_history"] = []
                 st.session_state["chats"][cid]["title"]        = "New chat"  # Reset title so next msg re-titles it
+            st.session_state["chat_search_query"] = ""              # Reset search box so the cleared chat is visible in the list
             logger.info(f"Chat cleared — id={cid}")                 # Log the clear event
             st.rerun(scope="app")                                   # Refresh UI to clear the chat area
 
     st.divider()  # Visual separator
 
-    # ── Recent chats list ──
-    st.markdown(
-        "<span class='askly-recent-label'>🕘 Recent chats</span>",
-        unsafe_allow_html=True,
+    # ══════════════════════════════════════════════════════════════════════════
+    # ── Chat search box ──
+    # Lives inside the fragment (not the outer app), so typing here reruns
+    # only render_chat_sidebar() — NOT the main chat area — keeping it snappy.
+    # Filters the "Recent chats" list below by matching against both the
+    # chat title AND every message's content (like ChatGPT/Claude search).
+    # ══════════════════════════════════════════════════════════════════════════
+    search_query = st.text_input(  # Live-filter input box
+        "Search chats",  # Accessibility label (hidden below)
+        key="chat_search_query",  # Session-state key so we can reset it programmatically
+        placeholder="🔍 Search chats...",  # Grey placeholder text shown when empty
+        label_visibility="collapsed",  # Hide the label, keep only the placeholder
+        disabled=busy,  # Lock the box while Askly is processing a query
     )
 
+    # ── Recent chats section header (swaps label while actively searching) ──
+    if search_query.strip():
+        st.markdown(f"🔍 Results for “{search_query.strip()}”", unsafe_allow_html=True)  # Show what's being searched
+    else:
+        st.markdown("🕘 Recent chats", unsafe_allow_html=True)  # Default header
+
+    # ── Track which chat (if any) is currently being renamed ──
+    if "renaming_chat_id" not in st.session_state:  # Only one chat can be in "rename mode" at a time
+        st.session_state["renaming_chat_id"] = None
+
     recent_chats_container = st.container()
-    
+
     with recent_chats_container:
-        if st.session_state.get("chats"):                       # Only render if there are past chats
-            for chat_id, chat in sorted(                        # Iterate newest-first, skip empty chats
-                    [(k, v) for k, v in st.session_state["chats"].items() if v["messages"]],  # Skip chats with     no messages
+
+        # ── Start with every non-empty chat (same base filter as before) ──
+        all_chats = [
+            (k, v) for k, v in st.session_state.get("chats", {}).items()
+            if v["messages"]  # Skip chats with no messages
+        ]
+
+        # ── Apply the search filter, if the user has typed anything ──
+        if search_query.strip():
+            q = search_query.strip().lower()  # Normalise query for case-insensitive matching
+
+            def _matches(chat: dict) -> bool:
+                if q in chat["title"].lower():  # Match against the chat's title first (cheap check)
+                    return True
+                return any(  # Fall back to scanning every message's content
+                    q in m.get("content", "").lower()
+                    for m in chat["messages"]
+                )
+
+            all_chats = [(k, v) for k, v in all_chats if _matches(v)]  # Keep only chats that matched
+
+        if all_chats:  # Only render if there's something to show
+            for chat_id, chat in sorted(  # Iterate newest-first
+                    all_chats,
                     key=lambda x: x[1]["timestamp"], reverse=True
             ):
                 is_active = chat_id == st.session_state["current_chat_id"]  # Check if this is the active chat
-                btn_label = f"▶ {chat['title']}" if is_active else chat["title"]  # Highlight active chat
 
-                if st.button(btn_label, key=f"chat_{chat_id}", use_container_width=True, disabled=busy,):  # One    button per chat
-                    st.session_state["current_chat_id"] = chat_id       # Switch to clicked chat
-                    st.session_state["messages"] = chat["messages"]     # Restore its messages
-                    st.session_state["chat_history"] = chat.get("chat_history", [])  # Restore LLM memory
-                    st.session_state["awaiting_clarification"] = False  # Reset clarification flag
-                    logger.info(f"Switched to chat id={chat_id}")       # Log chat switch
-                    st.rerun(scope="app")                               # Refresh whole app so main chat area updates too
+                # ══════════════════════════════════════════════════════════
+                # ── Rename mode for THIS chat: show text input + Save/Cancel ──
+                # ══════════════════════════════════════════════════════════
+                if st.session_state["renaming_chat_id"] == chat_id:
+
+                    new_title = st.text_input(  # Editable title field, pre-filled with current title
+                        "Rename chat",
+                        value=chat["title"],
+                        key=f"rename_input_{chat_id}",
+                        label_visibility="collapsed",
+                    )
+
+                    save_col, cancel_col = st.columns([1, 1])  # Two equal-width buttons side by side
+
+                    with save_col:
+                        if st.button("💾 Save", key=f"save_rename_{chat_id}", use_container_width=True):
+                            trimmed = new_title.strip()  # Remove leading/trailing whitespace
+                            if trimmed:  # Ignore empty titles — keep the old one
+                                st.session_state["chats"][chat_id]["title"] = trimmed[:40] + (
+                                    "…" if len(trimmed) > 40 else ""  # Same 40-char cap used for auto-titling
+                                )
+                                logger.info(f"Chat renamed — id={chat_id} → '{trimmed}'")  # Log the rename event
+                            st.session_state["renaming_chat_id"] = None  # Exit rename mode
+                            st.rerun(scope="app")  # Refresh so the new title shows everywhere
+
+                    with cancel_col:
+                        if st.button("✖ Cancel", key=f"cancel_rename_{chat_id}", use_container_width=True):
+                            st.session_state["renaming_chat_id"] = None  # Exit rename mode, discard edits
+                            st.rerun(scope="app")
+
+                # ══════════════════════════════════════════════════════════
+                # ── Normal mode: chat button + small rename icon beside it ──
+                # ══════════════════════════════════════════════════════════
+                else:
+                    chat_col, rename_col = st.columns([5, 1])  # Chat button takes most of the width; icon is narrow
+
+                    with chat_col:
+                        btn_label = f"▶ {chat['title']}" if is_active else chat["title"]  # Highlight active chat
+
+                        if st.button(btn_label, key=f"chat_{chat_id}", use_container_width=True,
+                                     disabled=busy, ):  # One    button per chat
+                            st.session_state["current_chat_id"] = chat_id  # Switch to clicked chat
+                            st.session_state["messages"] = chat["messages"]  # Restore its messages
+                            st.session_state["chat_history"] = chat.get("chat_history", [])  # Restore LLM memory
+                            st.session_state["awaiting_clarification"] = False  # Reset clarification flag
+                            logger.info(f"Switched to chat id={chat_id}")  # Log chat switch
+                            st.rerun(scope="app")  # Refresh whole app so main chat area updates too
+
+                    with rename_col:
+                        if st.button("⋮", key=f"rename_btn_{chat_id}", use_container_width=True,
+                                     disabled=busy, ):  # Enter rename mode
+                            st.session_state["renaming_chat_id"] = chat_id  # Mark this chat as being renamed
+                            st.rerun(scope="app")  # Refresh to swap in the text input
+
+        elif search_query.strip():  # Search typed but nothing matched
+            st.caption("No matching chats found.")  # Empty-state message
+        # else: no chats exist at all yet — render nothing, same as before
 
     st.write("")
     st.write("")
@@ -746,6 +722,27 @@ with st.sidebar:
         color: #7b848a !important;
         opacity: .6;
     }
+    
+    /* ── Sidebar search box styling (matches dark sidebar theme) ── */
+    section[data-testid="stSidebar"] div[data-testid="stTextInput"] input {
+        background-color: #2a2a2a !important;   /* Dark input background to match sidebar */
+        border: 1px solid #4a4a4a !important;   /* Slightly stronger border so the box itself reads clearly */
+        border-radius: 8px !important;          /* Rounded corners, consistent with buttons */
+        color: #f5f5f5 !important;              /* Bright text for whatever the user types */
+        caret-color: #f5f5f5 !important;        /* Make sure the blinking cursor is visible too */
+    }
+
+    /* Placeholder text needs its own rule — browsers dim it heavily by default */
+    section[data-testid="stSidebar"] div[data-testid="stTextInput"] input::placeholder {
+        color: #b5b5b5 !important;              /* Light grey, but bright enough to read on #2a2a2a */
+        opacity: 1 !important;                  /* Firefox dims placeholders further unless opacity is forced to 1 */
+    }
+
+    section[data-testid="stSidebar"] div[data-testid="stTextInput"] input:focus {
+        border-color: #7a7a7a !important;       /* Lighter border on focus for feedback */
+        box-shadow: none !important;            /* Remove Streamlit's default blue glow */
+    }
+    
     </style>
     """, unsafe_allow_html=True)
 
@@ -882,26 +879,10 @@ if not st.session_state["chats"] and st.session_state["current_chat_id"] is None
         "messages":  [],                                    # Empty messages
         "timestamp": datetime.now()                         # Record creation time
     }
->>>>>>> f1888fd0 (Initial commit)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN AREA – Chat interface
-<<<<<<< HEAD
-# ══════════════════════════════════════════════════════════════════════════════
-
-# ── Initialise chat history in session state ──────────────────────────────────
-
-if "messages" not in st.session_state:                     # Only initialise if the key doesn't exist yet
-    st.session_state["messages"] = []                      # Start with an empty conversation history
-
-
-# ── Render existing chat history ──────────────────────────────────────────────
-
-for msg in st.session_state["messages"]:                   # Loop over every past message
-    with st.chat_message(msg["role"]):                     # Render as 'user' or 'assistant' chat bubble
-        st.markdown(msg["content"])                        # Render message text (supports markdown formatting)
-=======
 # This code is responsible for re-displaying all previous chat messages 
 #    stored in Streamlit's session state whenever the app reruns.
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1172,93 +1153,10 @@ for msg in st.session_state["messages"]:                    # Loop over every pa
     f'<div class="askly-row {role}">{row_inner}</div>',
     unsafe_allow_html=True,
     )
->>>>>>> f1888fd0 (Initial commit)
 
 
 # ── Chat input box ────────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-query = st.chat_input(                                     # Sticky input box pinned to the bottom of the page
-    placeholder="Ask a question about your documents..."   # Grey placeholder text inside the input
-)
-
-# ── Handle new user query ─────────────────────────────────────────────────────
-
-if query:                                                  # Only execute when the user actually submits a message
-
-    # Guard: make sure documents are indexed before trying to answer
-    if not st.session_state.get("indexed", False):         # Check session state flag
-        st.warning("⚠️ Please index your documents first using the sidebar.")  # Remind the user
-        st.stop()                                          # Stop further execution for this rerun
-
-    # ── Display user message ──
-    st.session_state["messages"].append(                   # Append user message to conversation history
-        {"role": "user", "content": query}
-    )
-    with st.chat_message("user"):                          # Render user chat bubble
-        st.markdown(query)                                 # Show the user's question
-
-    # ── Retrieval phase ───────────────────────────────────────────────────────
-    with st.chat_message("assistant"):                     # Open assistant chat bubble
-
-        with st.spinner("🔍 Searching documents..."):      # Show spinner during retrieval (may take a few seconds)
-
-            bm25_retriever  = get_bm25_retriever(          # Build BM25 retriever fresh each query (fast – in-memory)
-                st.session_state["chunks"]                 # Pass the cached chunk list
-            )
-            dense_retriever = get_dense_retriever(         # Get dense retriever from the cached vectorstore
-                st.session_state["vectorstore"]            # Pass the Qdrant-backed vectorstore
-            )
-            docs_with_scores = retrieve(                   # Run full pipeline: BM25 + dense + cross-encoder rerank
-                query,                                     # User's question
-                bm25_retriever,                            # BM25 keyword retriever
-                dense_retriever,                           # Dense vector retriever
-                top_n=top_n                                # From sidebar slider
-            )
-
-        # ── Show retrieved chunks in an expandable panel ──────────────────────
-
-        with st.expander(                                  # Collapsible section (closed by default)
-            f"📄 Retrieved Chunks & Scores  ·  top-{top_n} of {len(docs_with_scores)}",
-            expanded=False                                 # Collapsed by default; user can click to expand
-        ):
-            for i, (doc, score) in enumerate(docs_with_scores, start=1):  # Iterate best-first
-                source = doc.metadata.get(                 # Get source filename from metadata
-                    "file_name",
-                    doc.metadata.get("source", "unknown")
-                )
-                # Score badge: green if > 0, red if ≤ 0  (cross-encoder scores can be negative)
-                score_color = "green" if score > 0 else "red"  # Choose badge colour based on score sign
-
-                st.markdown(                               # Render chunk header with score badge
-                    f"**Chunk {i}** &nbsp; "
-                    f"🎯 Score: :{score_color}[`{score:+.4f}`] &nbsp; "
-                    f"📁 `{source}`"
-                )
-                st.text(                                   # Show first 350 chars of chunk as plain text
-                    doc.page_content[:350] + ("..." if len(doc.page_content) > 350 else "")
-                )
-                if i < len(docs_with_scores):              # Don't draw divider after the last chunk
-                    st.divider()                           # Visual separator between chunks
-
-        # ── Streaming LLM response ────────────────────────────────────────────
-
-        response_placeholder = st.empty()                  # Create an empty container that we'll update in-place
-        full_response        = ""                          # Accumulate all streamed tokens here
-
-        for token in run_rag_chain_stream(query, docs_with_scores):  # Stream tokens from the LLM
-            full_response += token                         # Append each new token to the full response string
-            response_placeholder.markdown(                 # Update the displayed text on every token
-                full_response + "▌"                        # Blinking cursor effect at the end
-            )
-
-        response_placeholder.markdown(full_response)       # Final render WITHOUT the cursor character
-
-        # Append the completed assistant message to the conversation history
-        st.session_state["messages"].append(               # Save assistant reply
-            {"role": "assistant", "content": full_response}
-        )
-=======
 query = st.chat_input(                                      # Sticky input box pinned to the bottom of the page
     placeholder="Your answer starts with Askly...",         # Grey placeholder text inside the input
     disabled=st.session_state["processing"],                # Lock the box while a response is being generated
@@ -1481,4 +1379,3 @@ if st.session_state["processing"] and st.session_state["pending_query"]:  # Only
     st.session_state["processing"]    = False
     st.session_state["pending_query"] = None
     st.rerun(scope="app")
->>>>>>> f1888fd0 (Initial commit)

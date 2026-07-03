@@ -1,12 +1,3 @@
-<<<<<<< HEAD
-# rag/chain.py
-
-from langchain_ollama import ChatOllama                    
-from langchain_core.documents import Document                      # LangChain Document (page_content + metadata)
-from langchain_core.prompts import ChatPromptTemplate      # Template that formats messages for the LLM
-from langchain_core.output_parsers import StrOutputParser  # Parses LLM ChatMessage output to a plain string
-from typing import Generator                               # Type hint for generator functions (streaming)
-=======
 import re                                                   # For stripping any stray <think> blocks from LLM output
 from langchain_ollama import ChatOllama                    
 from langchain_core.documents import Document               # LangChain Document (page_content + metadata)
@@ -14,18 +5,10 @@ from langchain_core.prompts import ChatPromptTemplate      # Template that forma
 from langchain_core.output_parsers import StrOutputParser  # Parses LLM ChatMessage output to a plain string
 from typing import Generator                               # Type hint for generator functions (streaming)
 from rag.logger import logger                              # Shared logger instance
->>>>>>> f1888fd0 (Initial commit)
 
 
 # ── Configuration constants ──────────────────────────────────────────────────
 
-<<<<<<< HEAD
-LLM_MODEL   = "qwen3:8b"   # Ollama model tag – must be pulled: `ollama pull qwen3:8b`
-                             # TIP: Use "qwen3:1.7b/no_think" to disable thinking mode for faster (but less reasoned) answers
-LLM_TEMP    = 0.1           # Low temperature → more deterministic, factual answers (0 = fully deterministic)
-LLM_TOKENS  = 1024          # Maximum number of tokens the LLM is allowed to generate per response
-
-=======
 LLM_MODEL   = "qwen3:1.7b"   # TIP: Use "qwen3:1.7b/no_think " to disable thinking mode for faster (but less reasoned) answers
 LLM_TEMP    = 0              # Low temperature → more deterministic, factual answers (0 = fully deterministic)
 LLM_TOKENS  = 4608           # Maximum number of tokens the LLM is allowed to generate per response
@@ -34,7 +17,6 @@ LLM_KEEP_ALIVE = "30m"       # Keep model loaded in VRAM between requests (reduc
 LLM_NUM_CTX = 16384          # Cap context window — measure your actual prompt size (context + history + question)
                              # and set this just above it; avoid leaving it unset (defaults can be larger than needed)
 LLM_SEED = 42                # Fixed seed → combined with temperature=0, removes run-to-run sampling variance
->>>>>>> f1888fd0 (Initial commit)
 
 # ── LLM initialiser ──────────────────────────────────────────────────────────
 
@@ -43,14 +25,6 @@ def get_llm() -> ChatOllama:
     llm = ChatOllama(              
         model=LLM_MODEL,           
         temperature=LLM_TEMP,      
-<<<<<<< HEAD
-        num_predict=LLM_TOKENS,    
-    )
-
-    print(f"[Chain] LLM → model='{LLM_MODEL}', temp={LLM_TEMP}, max_tokens={LLM_TOKENS}")  # Log LLM config
-
-    return llm                     # Return the configured LLM
-=======
         num_predict=LLM_TOKENS,
         keep_alive=LLM_KEEP_ALIVE,
         num_ctx=LLM_NUM_CTX,
@@ -64,7 +38,6 @@ def get_llm() -> ChatOllama:
     print(f"[Chain] LLM → model='{LLM_MODEL}', temp={LLM_TEMP}, max_tokens={LLM_TOKENS}, keep_alive={LLM_KEEP_ALIVE}")  # Log LLM config
 
     return llm                   
->>>>>>> f1888fd0 (Initial commit)
 
 
 # ── Prompt template ───────────────────────────────────────────────────────────
@@ -72,37 +45,6 @@ def get_llm() -> ChatOllama:
 def _build_prompt() -> ChatPromptTemplate:
 
     template = """\
-<<<<<<< HEAD
-    You are a professional internal company assistant.
-
-    Your task is to answer questions strictly using ONLY the provided company documents.
-
-    Rules:
-
-    - Use only the given context.
-    - Do not use external knowledge.
-    - Do not hallucinate or invent information.
-    - If the answer is not found, respond exactly:
-
-    I could not find this information in the company documents.
-
-    - Be concise and professional.
-    - Use bullet points if needed.
-    - Use chat history for continuity.
-
-──────────────────────────────────────────
-CONTEXT:
-{context}
-──────────────────────────────────────────
-
-QUESTION: {question}
-
-ANSWER:"""                                          # Multi-line f-string with placeholders for context and question
-
-    prompt = ChatPromptTemplate.from_template(template)  # Convert the string template into a LangChain prompt object
-
-    return prompt                                       # Return the ready-to-use prompt template
-=======
 You are a professional internal company assistant. \
 Your sole knowledge source is the documents section below, \
 which contains retrieved excerpts from official company documents.
@@ -162,7 +104,6 @@ CRITICAL RULES:
 ANSWER:"""                                              # Multi-line f-string with placeholders for context and question
 
     return ChatPromptTemplate.from_template(template)  # Wrap string into a LangChain prompt object
->>>>>>> f1888fd0 (Initial commit)
 
 
 # ── Context formatter ─────────────────────────────────────────────────────────
@@ -171,19 +112,11 @@ def _format_context(docs_with_scores: list[tuple[Document, float]]) -> str:
 
     parts: list[str] = []                              # Accumulate formatted chunk strings here
 
-<<<<<<< HEAD
-    for i, (doc, score) in enumerate(docs_with_scores, start=1):   # Enumerate from 1 for human-friendly numbering
-=======
     for i, (doc, score) in enumerate(docs_with_scores, start=1):   # Enumerate from 1 
->>>>>>> f1888fd0 (Initial commit)
         source = doc.metadata.get(                     # Try to get the source file name from LlamaIndex metadata
             "file_name",                               # LlamaIndex usually stores the filename here
             doc.metadata.get("source", "unknown")      # Fall back to 'source' key or 'unknown' string
         )
-<<<<<<< HEAD
-        parts.append(                                  # Build a clearly delimited chunk block
-            f"[Chunk {i} | Relevance Score: {score:+.4f} | Source: {source}]\n"  # Header with rank, score, source
-=======
 
         logger.info(                                   # Record retrieved source
             f"Chunk {i} | Score={score:+.4f} | Source={source}"
@@ -191,37 +124,12 @@ def _format_context(docs_with_scores: list[tuple[Document, float]]) -> str:
 
         parts.append(                                  # Build a clearly delimited chunk block
             f"[Reference {i} | Source: {source}]\n"    # Header source
->>>>>>> f1888fd0 (Initial commit)
             f"{doc.page_content}"                      # The actual text content of the chunk
         )
 
     return "\n\n---\n\n".join(parts)                   # Join chunks with a visible separator for clarity
 
 
-<<<<<<< HEAD
-# ── Non-streaming RAG call ────────────────────────────────────────────────────
-
-def run_rag_chain(query: str, docs_with_scores: list[tuple[Document, float]]) -> str:
-
-    llm     = get_llm()                                # Initialise the LLM
-    prompt  = _build_prompt()                          # Get the prompt template
-    context = _format_context(docs_with_scores)        # Format retrieved chunks into a context string
-
-    # ── Build LCEL chain ──
-    # The pipe operator (|) connects steps: prompt → llm → parser
-    chain = prompt | llm | StrOutputParser()           # LCEL chain: format prompt, call LLM, parse to string
-
-    print(f"[Chain] Running RAG chain (non-streaming) for: '{query}'")  # Log before calling the LLM
-
-    response: str = chain.invoke({                     # Execute the chain with the input dictionary
-        "context":  context,                           # Pass formatted context string
-        "question": query                              # Pass the user's question
-    })
-
-    print(f"[Chain] ✅ Answer generated ({len(response)} chars)")       # Log completion
-
-    return response                                    # Return the full answer string
-=======
 # ── Query rewriting (resolve pronouns/follow-ups before retrieval) ───────────
 
 def rewrite_query_with_history(
@@ -286,38 +194,21 @@ REWRITTEN QUESTION:"""
     print(f"[Chain] Query rewrite: '{query}' → '{rewritten}'")  # Log rewrite for debugging
 
     return rewritten if rewritten else query             # Fallback to original if rewrite came back empty
->>>>>>> f1888fd0 (Initial commit)
 
 
 # ── Streaming RAG call ────────────────────────────────────────────────────────
 
 def run_rag_chain_stream(
     query: str,
-<<<<<<< HEAD
-    docs_with_scores: list[tuple[Document, float]]
-=======
     docs_with_scores: list[tuple[Document, float]],
     chat_history: list[dict] | None = None,            # list of {"role": .., "content": ..} dicts
     max_history_turns: int = 4                         # how many past exchanges to include
->>>>>>> f1888fd0 (Initial commit)
 ) -> Generator[str, None, None]:
 
     llm     = get_llm()                                # Initialise the LLM
     prompt  = _build_prompt()                          # Get the prompt template
     context = _format_context(docs_with_scores)        # Format retrieved chunks into a context string
 
-<<<<<<< HEAD
-    # ── Build LCEL chain (same structure as non-streaming) ──
-    chain = prompt | llm | StrOutputParser()           # Pipe: prompt template → LLM → string parser
-
-    print(f"[Chain] Streaming RAG chain for: '{query}'")               # Log stream start
-
-    token_count = 0                                    # Counter to track total streamed tokens
-
-    for token in chain.stream({                        # .stream() yields partial text chunks instead of blocking
-        "context":  context,                           # Formatted retrieved passages
-        "question": query                              # User's question
-=======
     # ── Format chat history into a readable string for the prompt ──
     # Each turn is labelled User/Assistant and separated by a blank line.
     # We trim to the last `max_history_turns` exchanges (1 exchange = 1 user + 1 assistant msg).
@@ -362,14 +253,10 @@ def run_rag_chain_stream(
         "context":  context,                           # Formatted retrieved passages
         "question": f"{query}",                        # User's question
         "chat_history": history_str,                   # pass formatted history to prompt
->>>>>>> f1888fd0 (Initial commit)
     }):
         token_count += 1                               # Increment token counter
         yield token                                    # Yield the current token to the Streamlit caller
 
-<<<<<<< HEAD
-    print(f"[Chain] ✅ Stream complete ({token_count} tokens)")         # Log when streaming finishes
-=======
         while True:
             if not in_think:
                 if OPEN_TAG in buffer:                                   # Full opening tag found
@@ -403,4 +290,3 @@ def run_rag_chain_stream(
     )
         
     print(f"[Chain] ✅ Stream complete ({token_count} tokens)")         # Log when streaming finishes
->>>>>>> f1888fd0 (Initial commit)
