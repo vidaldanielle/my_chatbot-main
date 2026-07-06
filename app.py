@@ -5,7 +5,10 @@ import uuid                                            # for generating unique c
 import html
 import re
 import textwrap
-
+import json                                            # for safely escaping text into a JS string literal
+import streamlit.components.v1 as components
+import csv
+from pathlib import Path
 # ── Import our custom RAG modules ────────────────────────────────────────────
 from rag.loader    import load_documents               # Step 1 – load raw files
 from rag.cleaner   import clean_documents              # Step 2 - clean documents
@@ -120,6 +123,192 @@ def render_bubble(text, show_timestamp=False):
         unsafe_allow_html=True,
     )
 
+# ── Feedback logging ──────────────────────────────────────────────────────
+# Path to the CSV file that persists every feedback click across app restarts.
+# session_state is memory-only and resets on refresh, so this file is the
+# only durable record of user feedback.
+FEEDBACK_LOG_PATH = "feedback_log.csv"
+
+
+def _log_feedback_event(idx: int, msg: dict, feedback_value: str):
+    """Append a single feedback event as a new row in the CSV log.
+
+    Called every time a user clicks thumbs up/down (including un-clicking,
+    which logs as 'cleared'). Creates the file with a header row on first use.
+    """
+    file_exists = Path(FEEDBACK_LOG_PATH).exists()
+
+    with open(FEEDBACK_LOG_PATH, mode="a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+
+        # Write header only once, when the file doesn't exist yet
+        if not file_exists:
+            writer.writerow([
+                "timestamp",
+                "chat_id",
+                "message_index",
+                "feedback",
+                "assistant_response",
+            ])
+
+        writer.writerow([
+            datetime.now().isoformat(),                          # when the click happened
+            st.session_state.get("current_chat_id", ""),         # which chat this belongs to
+            idx,                                                 # position of the message in the chat
+            feedback_value if feedback_value else "cleared",     # "up" / "down" / "cleared"
+            msg["content"][:200],                                # truncated preview of the assistant reply
+        ])
+
+    logger.info(f"Feedback logged: idx={idx}, value={feedback_value}")
+
+def render_copy_button(idx: int, text: str):
+    safe_json_text = json.dumps(text)
+
+    copy_component_html = f"""
+    <html>
+    <head>
+    <style>
+        html, body {{
+            margin: 0;
+            padding: 0;
+            background-color: transparent;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            height: 100%;
+        }}
+        #copyBtn {{
+            height: 26px;
+            width: 26px;
+            padding: 0;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: #8a939a;
+            font-size: 13px;
+            cursor: pointer;
+            opacity: 0.85;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all .12s ease;
+        }}
+        #copyBtn:hover {{
+            background: rgba(0,0,0,0.05);
+            color: #2c3a3f;
+            opacity: 1;
+        }}
+    </style>
+    </head>
+    <body>
+        <button id="copyBtn" title="Copy">📋</button>
+        <script>
+            const btn = document.getElementById('copyBtn');
+            const txt = {safe_json_text};
+
+            btn.addEventListener('click', function() {{
+                function fallbackCopy(t) {{
+                    const ta = document.createElement('textarea');
+                    ta.value = t;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    try {{ document.execCommand('copy'); }} catch (e) {{ console.error(e); }}
+                    document.body.removeChild(ta);
+                }}
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {{
+                    navigator.clipboard.writeText(txt).catch(function() {{
+                        fallbackCopy(txt);
+                    }});
+                }} else {{
+                    fallbackCopy(txt);
+                }}
+
+                const original = btn.innerText;
+                btn.innerText = '✅';
+                setTimeout(function() {{ btn.innerText = original; }}, 1200);
+            }});
+        </script>
+    </body>
+    </html>
+    """
+
+    components.html(copy_component_html, height=26, width=26)
+
+# ── sync feedback edits back into the persistent chats dict ──────────────
+def _sync_feedback_to_chat_store():
+    cid = st.session_state.get("current_chat_id")
+    if cid and cid in st.session_state["chats"]:
+        st.session_state["chats"][cid]["messages"] = st.session_state["messages"]
+    logger.info(f"Feedback synced to chat store — chat_id={cid}")
+
+
+# ── remove an assistant reply and re-queue its query for regeneration ────
+def _trigger_regeneration(idx: int):
+    if idx == 0:
+        return  # safety guard — an assistant msg should never be at index 0
+
+    user_msg = st.session_state["messages"][idx - 1]
+
+    # Drop the stale assistant turn from display history
+    del st.session_state["messages"][idx]
+
+    # Drop the matching pair from LLM memory, if present
+    ch = st.session_state["chat_history"]
+    if (
+        len(ch) >= 2
+        and ch[-1]["role"] == "assistant"
+        and ch[-2]["role"] == "user"
+        and ch[-2]["content"] == user_msg["content"]
+    ):
+        st.session_state["chat_history"] = ch[:-2]
+
+    logger.info(f"Regenerate requested for query: {user_msg['content']}")
+
+    st.session_state["regenerating"]  = True   # skip re-appending the user turn later
+    st.session_state["pending_query"] = user_msg["content"]
+    st.session_state["processing"]    = True
+    st.rerun(scope="app")
+
+
+# ── render the Copy / Feedback / Regenerate row under an assistant bubble ─
+def render_message_actions(idx: int, msg: dict, is_last_assistant: bool):
+    text = msg["content"]
+    feedback = msg.get("feedback")
+
+    st.markdown('<div class="askly-actions-anchor"></div>', unsafe_allow_html=True)
+
+    # The key parameter renders as a class like "st-key-msg_actions_{idx}" on
+    # this specific container. This lets CSS target ONLY this row instead of
+    # every st.columns()/st.container(horizontal=True) in the whole app —
+    # which was accidentally styling the sidebar's chat list buttons too.
+    with st.container(horizontal=True, gap="small", key=f"msg_actions_{idx}"):
+        render_copy_button(idx, text)
+
+        if st.button("👍", key=f"fb_up_{idx}",
+                      type="primary" if feedback == "up" else "secondary",
+                      help="Give positive feedback"):
+            msg["feedback"] = None if feedback == "up" else "up"
+            _sync_feedback_to_chat_store()
+            _log_feedback_event(idx, msg, msg["feedback"])
+            st.rerun(scope="app")
+
+        if st.button("👎", key=f"fb_down_{idx}",
+                      type="primary" if feedback == "down" else "secondary",
+                      help="Give negative feedback"):
+            msg["feedback"] = None if feedback == "down" else "down"
+            _sync_feedback_to_chat_store()
+            _log_feedback_event(idx, msg, msg["feedback"])
+            st.rerun(scope="app")
+
+        if is_last_assistant:
+            if st.button("🔄", key=f"regen_{idx}",
+                          disabled=st.session_state["processing"],
+                          help="Regenerate response"):
+                _trigger_regeneration(idx)
 
 # ── Manage Vector Index Initialization and Incremental Updates ────────────
 
@@ -743,6 +932,81 @@ with st.sidebar:
         box-shadow: none !important;            /* Remove Streamlit's default blue glow */
     }
     
+    /* ── Message action row (Copy / Feedback / Regenerate) — ghost icon style ── */
+    /* Scoped to containers created with key="msg_actions_{idx}" ONLY —
+       using a bare stHorizontalBlock selector here was bleeding into the
+       sidebar's chat-list st.columns(), squashing chat titles. */
+
+    div[class*="st-key-msg_actions_"] button[data-testid="stBaseButton-secondary"],
+    div[class*="st-key-msg_actions_"] button[data-testid="stBaseButton-primary"],
+    div[class*="st-key-msg_actions_"] .stButton > button {
+        height: 26px !important;
+        width: 26px !important;
+        min-height: 26px !important;
+        min-width: 26px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 6px !important;
+        border: none !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        color: #8a939a !important;
+        font-size: 13px !important;
+        line-height: 1 !important;
+        box-shadow: none !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        opacity: 0.85;
+        transition: all .12s ease;
+    }
+
+    div[class*="st-key-msg_actions_"] button[data-testid="stBaseButton-secondary"]:hover,
+    div[class*="st-key-msg_actions_"] button[data-testid="stBaseButton-primary"]:hover,
+    div[class*="st-key-msg_actions_"] .stButton > button:hover {
+        background: rgba(0,0,0,0.05) !important;
+        background-color: rgba(0,0,0,0.05) !important;
+        color: #2c3a3f !important;
+        opacity: 1;
+    }
+
+    div[class*="st-key-msg_actions_"] button[data-testid="stBaseButton-secondary"]:active,
+    div[class*="st-key-msg_actions_"] button[data-testid="stBaseButton-primary"]:active,
+    div[class*="st-key-msg_actions_"] .stButton > button:active {
+        background: rgba(0,0,0,0.09) !important;
+        background-color: rgba(0,0,0,0.09) !important;
+    }
+
+    div[class*="st-key-msg_actions_"] button:disabled {
+        opacity: .25 !important;
+        background: transparent !important;
+        background-color: transparent !important;
+    }
+
+    /* Selected feedback state — subtle darker tint, no filled pill */
+    div[class*="st-key-msg_actions_"] button[data-testid="stBaseButton-primary"] {
+        background: rgba(0,0,0,0.06) !important;
+        background-color: rgba(0,0,0,0.06) !important;
+        color: #2c3a3f !important;
+        border: none !important;
+        opacity: 1;
+    }
+
+    div[class*="st-key-msg_actions_"] button[data-testid^="stBaseButton"] p,
+    div[class*="st-key-msg_actions_"] button[data-testid^="stBaseButton"] span {
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1 !important;
+    }
+
+    /* Copy button's iframe matches the same ghost footprint */
+    div[class*="st-key-msg_actions_"] iframe {
+        border: none !important;
+        background: transparent !important;
+        width: 26px !important;
+        height: 26px !important;
+        display: block !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1115,7 +1379,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-for msg in st.session_state["messages"]:                    # Loop over every past message
+assistant_indices = [i for i, m in enumerate(st.session_state["messages"]) if m["role"] == "assistant"]
+last_assistant_idx = assistant_indices[-1] if assistant_indices else None
+
+for idx, msg in enumerate(st.session_state["messages"]):
 
     # Retrieve the saved timestamp string (fallback to empty string if somehow missing)
     ts = msg.get("timestamp", "")                           # pull saved timestamp
@@ -1154,7 +1421,8 @@ for msg in st.session_state["messages"]:                    # Loop over every pa
     unsafe_allow_html=True,
     )
 
-
+    if role == "assistant":
+        render_message_actions(idx, msg, is_last_assistant=(idx == last_assistant_idx))
 # ── Chat input box ────────────────────────────────────────────────────────────
 
 query = st.chat_input(                                      # Sticky input box pinned to the bottom of the page
@@ -1181,25 +1449,28 @@ if st.session_state["processing"] and st.session_state["pending_query"]:  # Only
     # ── Capture the user's query timestamp the moment they submit ──────────────
     user_ts = format_timestamp(datetime.now())             # snapshot time of submission
 
-    # ── Append + display user message (LEFT) ──
-    st.session_state["messages"].append(                   # Append user message to conversation history
-        {"role": "user", "content": query, "timestamp": user_ts}
-    )
+    is_regenerating = st.session_state.get("regenerating", False)
 
-    logger.info(                                           # Record user query
-        f"User query: {query}"
-    )
+    if not is_regenerating:
+        # ── Append + display user message (LEFT) ──
+        st.session_state["messages"].append(
+            {"role": "user", "content": query, "timestamp": user_ts}
+        )
+        logger.info(f"User query: {query}")
 
-    st.markdown(
-        f'<div class="askly-row user">'
-        f'<div class="askly-content">'
-        f'<div class="askly-bubble user">{query}</div>'
-        f'<div class="askly-meta">🕐 {user_ts}</div>'
-        f'</div>'
-        f'<div class="askly-avatar user">🧑</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+        st.markdown(
+            f'<div class="askly-row user">'
+            f'<div class="askly-content">'
+            f'<div class="askly-bubble user">{query}</div>'
+            f'<div class="askly-meta">🕐 {user_ts}</div>'
+            f'</div>'
+            f'<div class="askly-avatar user">🧑</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.session_state["regenerating"] = False  # consume the flag
+        logger.info(f"Regenerating answer for query: {query}")
 
     # ── Retrieval + assistant response (LEFT) ─────────────────────────────────
 

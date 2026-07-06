@@ -71,5 +71,11 @@ version 0.4	impprovement
 				display, user and assistant occupy
 				only 75% of the display screen.
 		Changed the Welcome message
-		Changed the message in the input box 		
+		Changed the message in the input box
+version 0.5	impprovement
+		Added chat search functionality
+		Added conversation rename functionality in the sidebar
+
+version 0.6	impprovement
+		Added message action buttons (Copy, Feedback, and Regenerate)
 		
