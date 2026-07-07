@@ -39,7 +39,7 @@ version 0.3	improvement
 				in the repository and create vector
 				for it (incremental creation)
 		Added "Keep Alive" in the LLM operation
-version 0.4	impprovement
+version 0.4	improvement
 		Added rewriter for memory chat
 		Added "Clear Chat" functionality
 		Improved the user interface
@@ -53,9 +53,9 @@ version 0.4	impprovement
 				generating the assistant response
 		Disabled the input box upon generating the 
 				assistant response
-		Improved the promt by removing the "chunks"
+		Improved the prompt by removing the "chunks"
 				on the assistant response
-		Improved the promt by replacing the "CONTEXT"
+		Improved the prompt by replacing the "CONTEXT"
 				by "documents" on the assistant
 				response
 		Trasferred the time stamp on the right side
@@ -72,10 +72,24 @@ version 0.4	impprovement
 				only 75% of the display screen.
 		Changed the Welcome message
 		Changed the message in the input box
-version 0.5	impprovement
+version 0.5	improvement
 		Added chat search functionality
 		Added conversation rename functionality in the sidebar
 
-version 0.6	impprovement
+version 0.6	improvement
 		Added message action buttons (Copy, Feedback, and Regenerate)
+
+version 0.7	improvement
+		Improve the logger.py (Fixed UTF-8 encoding crash in logger; 
+			added log rotation (5MB, 3 backups); 
+			improved log format and cleaned up code structure.)
+		Migrated deprecated st.components.v1.html to st.iframe in copy button component.
+			Improved clean_text() regex logic (preserves paragraph breaks, 
+			case-insensitive page-number matching); 
+			replaced print() with proper logger; 
+			added empty-document filtering in clean_documents().
+		Added a stop button (ChatGPT-style) to interrupt in-progress generation.
+       		Uses a hidden Streamlit button + JS-positioned proxy button next to
+       		the send arrow, auto-repositioning on resize. Partial streamed output
+       		is preserved and saved as the final message when stopped mid-stream.
 		

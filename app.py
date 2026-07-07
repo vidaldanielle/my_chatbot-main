@@ -6,7 +6,6 @@ import html
 import re
 import textwrap
 import json                                            # for safely escaping text into a JS string literal
-import streamlit.components.v1 as components
 import csv
 from pathlib import Path
 # ── Import our custom RAG modules ────────────────────────────────────────────
@@ -236,7 +235,7 @@ def render_copy_button(idx: int, text: str):
     </html>
     """
 
-    components.html(copy_component_html, height=26, width=26)
+    st.iframe(copy_component_html, height=26, width=26)
 
 # ── sync feedback edits back into the persistent chats dict ──────────────
 def _sync_feedback_to_chat_store():
@@ -1129,6 +1128,12 @@ if "processing" not in st.session_state:            # True while a query is bein
 if "pending_query" not in st.session_state:          # Holds the query between the submit-rerun and the answer-rerun
     st.session_state["pending_query"] = None
 
+if "stop_requested" not in st.session_state:                  # True while the stop button has been clicked
+    st.session_state["stop_requested"] = False                 # Reset to False once handled
+
+if "streaming_response" not in st.session_state:               # Durable copy of tokens streamed so far
+    st.session_state["streaming_response"] = ""                 # Survives the rerun triggered by clicking stop
+
 if "chats" not in st.session_state:                  # Initialise chat history store on first load
     st.session_state["chats"] = {}                   # Dict of chat_id → {title, messages, timestamp}
 
@@ -1423,6 +1428,78 @@ for idx, msg in enumerate(st.session_state["messages"]):
 
     if role == "assistant":
         render_message_actions(idx, msg, is_last_assistant=(idx == last_assistant_idx))
+
+# ── Stop button ──
+if st.session_state["processing"]:
+    with st.container(key="askly_stop_btn_real"):
+        if st.button("Stop", key="askly_stop_btn"):
+            st.session_state["stop_requested"] = True
+
+    st.markdown("""
+    <style>
+    div[class*="st-key-askly_stop_btn_real"] {
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.iframe("""
+        <script>
+        (function() {
+            function positionProxy() {
+                const doc = window.parent.document;
+                const realBtn  = doc.querySelector('div[class*="st-key-askly_stop_btn_real"] button');
+                const arrowBtn = doc.querySelector('[data-testid="stChatInputSubmitButton"]');
+                if (!realBtn || !arrowBtn) return;
+
+                let proxy = doc.getElementById('askly-stop-proxy');
+                if (!proxy) {
+                    proxy = doc.createElement('button');
+                    proxy.id = 'askly-stop-proxy';
+                    proxy.innerText = '⏹';
+                    proxy.style.position = 'fixed';
+                    proxy.style.zIndex = '999999';
+                    proxy.style.width = '34px';
+                    proxy.style.height = '34px';
+                    proxy.style.borderRadius = '8px';
+                    proxy.style.border = 'none';
+                    proxy.style.background = '#2c3a3f';
+                    proxy.style.color = 'white';
+                    proxy.style.fontSize = '14px';
+                    proxy.style.cursor = 'pointer';
+                    proxy.style.boxShadow = '0 1px 4px rgba(0,0,0,0.25)';
+                    proxy.onmouseenter = () => proxy.style.background = '#445056';
+                    proxy.onmouseleave = () => proxy.style.background = '#2c3a3f';
+                    proxy.onclick = function() { realBtn.click(); };
+                    doc.body.appendChild(proxy);
+                }
+
+                const rect = arrowBtn.getBoundingClientRect();
+                proxy.style.top  = rect.top + 'px';
+                proxy.style.left = (rect.left - 42) + 'px';
+            }
+
+            positionProxy();
+            window.parent.addEventListener('resize', positionProxy);
+            const poller = setInterval(positionProxy, 250);
+            setTimeout(() => clearInterval(poller), 20000);
+        })();
+        </script>
+        """, height=1, width=1)
+
+else:
+    st.iframe("""
+    <script>
+    (function() {
+        const doc = window.parent.document;
+        const proxy = doc.getElementById('askly-stop-proxy');
+        if (proxy) proxy.remove();
+    })();
+    </script>
+    """, height=1, width=1)
+
 # ── Chat input box ────────────────────────────────────────────────────────────
 
 query = st.chat_input(                                      # Sticky input box pinned to the bottom of the page
@@ -1439,6 +1516,30 @@ if query and not st.session_state["processing"]:            # Fresh submission �
 
 if st.session_state["processing"] and st.session_state["pending_query"]:  # Only execute on the follow-up rerun
     query = st.session_state["pending_query"]                             # Recover the query saved before the rerun
+
+    # ── Handle stop-generation request ──────────────────────────────────
+    if st.session_state.get("stop_requested"):                            # User clicked stop mid-generation
+        partial = st.session_state.get("streaming_response", "")           # Recover whatever tokens made it through
+        final_text = partial if partial.strip() else "_Generation stopped._"
+        assistant_ts = format_timestamp(datetime.now())                    # Timestamp for the partial reply
+
+        st.session_state["messages"].append({                              # Save the partial reply as a normal message
+            "role": "assistant",
+            "content": final_text,
+            "timestamp": assistant_ts,
+            "sources": [],
+        })
+
+        logger.info("Generation stopped by user — partial response saved.")
+
+        st.session_state["stop_requested"]     = False                     # Reset all flags back to idle state
+        st.session_state["streaming_response"] = ""
+        st.session_state["processing"]         = False
+        st.session_state["pending_query"]      = None
+        st.session_state["regenerating"]       = False
+
+        st.rerun(scope="app")                                               # Refresh UI to unlock the input box
+        st.stop()                                                           # Halt execution — skip the RAG logic below
 
     # Guard — should never be False at this point (st.stop() above prevents it),
     # but kept as a defensive check.
@@ -1477,7 +1578,9 @@ if st.session_state["processing"] and st.session_state["pending_query"]:  # Only
     response_placeholder = st.empty()                  # In-place container updated token-by-token
     full_response        = ""                          # Accumulator for the complete streamed reply
     sources = []
-            
+
+    st.session_state["streaming_response"] = ""  # Reset durable copy for this new turn
+
     render_bubble(full_response)                        # Show avatar + empty bubble immediately (covers spinner phases)
 
     # ══════════════════════════════════════════════════════════════════
@@ -1572,6 +1675,7 @@ if st.session_state["processing"] and st.session_state["pending_query"]:  # Only
                 chat_history=st.session_state["chat_history"]   # pass memory
             ):
                 full_response += token or ""
+                st.session_state["streaming_response"] = full_response  # Durable copy in case stop is clicked
                 render_bubble(full_response + "")
 
         render_bubble(full_response, show_timestamp=True)
