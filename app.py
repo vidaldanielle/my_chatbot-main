@@ -546,6 +546,13 @@ def render_chat_sidebar():
     # Filters the "Recent chats" list below by matching against both the
     # chat title AND every message's content (like ChatGPT/Claude search).
     # ══════════════════════════════════════════════════════════════════════════
+
+    # ── Recent chats list ──
+    st.markdown(
+        "<span class='askly-recent-label'>🕘 Recent chats</span>",
+        unsafe_allow_html=True,
+    )
+
     search_query = st.text_input(  # Live-filter input box
         "Search chats",  # Accessibility label (hidden below)
         key="chat_search_query",  # Session-state key so we can reset it programmatically
@@ -557,8 +564,6 @@ def render_chat_sidebar():
     # ── Recent chats section header (swaps label while actively searching) ──
     if search_query.strip():
         st.markdown(f"🔍 Results for “{search_query.strip()}”", unsafe_allow_html=True)  # Show what's being searched
-    else:
-        st.markdown("🕘 Recent chats", unsafe_allow_html=True)  # Default header
 
     # ── Track which chat (if any) is currently being renamed ──
     if "renaming_chat_id" not in st.session_state:  # Only one chat can be in "rename mode" at a time
@@ -605,6 +610,7 @@ def render_chat_sidebar():
                         value=chat["title"],
                         key=f"rename_input_{chat_id}",
                         label_visibility="collapsed",
+                        max_chars=40,
                     )
 
                     save_col, cancel_col = st.columns([1, 1])  # Two equal-width buttons side by side
@@ -624,6 +630,48 @@ def render_chat_sidebar():
                         if st.button("✖ Cancel", key=f"cancel_rename_{chat_id}", use_container_width=True):
                             st.session_state["renaming_chat_id"] = None  # Exit rename mode, discard edits
                             st.rerun(scope="app")
+
+                    # ── Enter = Save, Escape = Cancel, para sa rename input na ito ──
+                    st.iframe(f"""
+                    <script>
+                    (function() {{
+                        const doc = window.parent.document;
+
+                        function attach() {{
+                            const input     = doc.querySelector('.st-key-rename_input_{chat_id} input');
+                            const saveBtn   = doc.querySelector('.st-key-save_rename_{chat_id} button');
+                            const cancelBtn = doc.querySelector('.st-key-cancel_rename_{chat_id} button');
+
+                            if (!input || !saveBtn || !cancelBtn) return false;
+                            if (input.dataset.asklyBound) return true;   // wag double-bind sa rerun
+
+                            input.dataset.asklyBound = "1";
+
+                            input.addEventListener('keydown', function(e) {{
+                                if (e.key === 'Enter') {{
+                                    e.preventDefault();
+                                    input.blur();                       
+                                    setTimeout(function() {{            
+                                        saveBtn.click();
+                                    }}, 60);
+                                }} else if (e.key === 'Escape') {{
+                                        e.preventDefault();
+                                        cancelBtn.click();
+                                }}
+                            }});
+
+                            return true;
+                        }}
+
+                        if (!attach()) {{
+                            const poller = setInterval(function() {{
+                                if (attach()) clearInterval(poller);
+                            }}, 150);
+                            setTimeout(function() {{ clearInterval(poller); }}, 5000);
+                        }}
+                    }})();
+                    </script>
+                    """, height=1, width=1)
 
                 # ══════════════════════════════════════════════════════════
                 # ── Normal mode: chat button + small rename icon beside it ──

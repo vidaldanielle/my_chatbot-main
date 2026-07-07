@@ -92,4 +92,15 @@ version 0.7	improvement
        		Uses a hidden Streamlit button + JS-positioned proxy button next to
        		the send arrow, auto-repositioning on resize. Partial streamed output
        		is preserved and saved as the final message when stopped mid-stream.
-		
+
+version 0.8 improvement
+       Added Enter-to-save / Escape-to-cancel to the chat rename input
+       		via a JS keydown listener bound to the input element.
+       Repositioned the "Recent chats" label to sit directly above the
+       		search box in the sidebar for clearer visual grouping.
+       Hid the Copy/Feedback/Regenerate action row while a response is
+       		regenerating, so controls aren't shown against a stale or
+       		in-progress message until the new answer finishes rendering.
+       Added a 40-character max_chars limit to the chat rename input,
+       		preventing overly long titles from being typed in the first
+       		place instead of relying only on post-save truncation.
